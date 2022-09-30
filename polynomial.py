@@ -76,6 +76,8 @@ class Polynomial:
             power[int(order)-i] = i
         if re.search("\d",splitty[int(order)]):
             coeff[int(order)] = re.findall("\d",splitty[int(order)])[0]
+            if len(re.findall("\d",splitty[int(order)])) > 1:
+                coeff[int(order)] = coeff[int(order)]*10 + int(re.findall("\d",splitty[int(order)])[1])
         for i in range(int(order)+1):
             for j in range(len(splitty[i])):
                 if splitty[i][j] == "*":
@@ -187,6 +189,10 @@ class Polynomial:
             return True
         if count != 0:
             return False
+    
+    def __truediv__(self,other): 
+        c = RationalPolynomial(str(self),str(other))
+        return c
             
 class RationalPolynomial:
 
@@ -251,6 +257,29 @@ class RationalPolynomial:
         c = RationalPolynomial(numerator,denominator)
         return(c) 
 
-a = RationalPolynomial.from_string("(3*x^2 + 2)/(x^3 + 1 + 2*x)")
-b = RationalPolynomial.from_string("(x^2 - 2)/(x^4 + 3*x)")
-print(a-b)
+    def __mul__(self,other):
+        a = Polynomial.from_string(str(self.numerator))
+        b = Polynomial.from_string(str(self.denominator))
+        c = Polynomial.from_string(str(other.numerator))
+        d = Polynomial.from_string(str(other.denominator))
+        numerator = str(a*c)
+        denominator = str(b*d)
+        c = RationalPolynomial(numerator,denominator)
+        return(c) 
+    
+    def __truediv__(self,other):
+        a = Polynomial.from_string(str(self.numerator))
+        b = Polynomial.from_string(str(self.denominator))
+        c = Polynomial.from_string(str(other.numerator))
+        d = Polynomial.from_string(str(other.denominator))
+        numerator = str(a*d)
+        denominator = str(b*c)
+        c = RationalPolynomial(numerator,denominator)
+        return(c) 
+
+    def __eq__(self,other):
+        if self.numerator == other.numerator:
+            if self.denominator == other.denominator:
+                return True
+        return False
+
