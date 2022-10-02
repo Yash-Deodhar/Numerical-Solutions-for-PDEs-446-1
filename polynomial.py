@@ -10,17 +10,17 @@ class Polynomial:
         self.coeff = coeff
     
     @staticmethod
-    def from_string(str):
-        p = len(str)
+    def from_string(aaa):
+        p = len(aaa)
         order = 0
         count3 = 0
         count4 = 0
         for i in range(p):
-            if str[i] == "^":
+            if aaa[i] == "^":
                 count3  = count3 + 1
-                if int(str[i+1]) > int(order):
-                    order = str[i+1]
-            if str[i] == "x":
+                if int(aaa[i+1]) > int(order):
+                    order = aaa[i+1]
+            if aaa[i] == "x":
                 count4 = count4 + 1
         if count3 == 0 and count4 != 0:
             order = 1
@@ -28,7 +28,10 @@ class Polynomial:
             order = 0
         coeff = np.zeros(int(order)+1,dtype=int)
         power = np.zeros(int(order)+1,dtype=int)
-        splitty2 = str.split()
+        abc = simp.cancel(aaa)
+        abc = str(abc)
+        abc = abc.replace("**","^")
+        splitty2 = abc.split()
         k = 0
         while(1):
             if re.search("^\+$",splitty2[k]):
@@ -41,9 +44,11 @@ class Polynomial:
             if k == len(splitty2):
                 break
         splitty = splitty2
+        print(splitty)
         zeroterms = int(order) + 1 - len(splitty)
         for i in range(zeroterms):
             splitty.append("")
+        print(splitty)
         q = len(splitty)
         for i in range(int(order)+1):
             l = len(splitty[i])
@@ -52,11 +57,13 @@ class Polynomial:
                 count1 = 0
                 if splitty[i][j] == "x":
                     count = count + 1
+                    print(1)
                 if splitty[i][j] == "^":
                     count1 = count1 + 1
                     power[i] = int(splitty[i][j+1])
                 if count != 0 and count1 == 0:
                     power[i] = 1
+        print(power)
         for i in range(q):
             for j in range(i,q):
                 if power[i] < power[j]:
@@ -218,6 +225,8 @@ class RationalPolynomial:
         total = "(" + self.numerator + ")" + "/" + "(" + self.denominator + ")"
         total = simp.cancel(total)
         total = str(total)
+        if re.search("\/",total) == None:
+            total = "(" + total + ")/(1)"
         total = total.replace("**","^")
         splitty2 = total.split("/")
         p = len(splitty2[0])
