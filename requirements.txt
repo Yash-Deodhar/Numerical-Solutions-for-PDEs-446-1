@@ -2,4 +2,3 @@ numpy
 sympy
 scipy
 matplotlib
-collections
