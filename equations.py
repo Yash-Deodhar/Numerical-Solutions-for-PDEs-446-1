@@ -56,7 +56,7 @@ class SoundWave:
         M10 = Z
         M11 = I
         if type(rho0) is list:
-            M00 = sparse.diags([rho0],0,shape=(N,N))
+            M00 = sparse.diags(rho0, offsets = 0,shape=[N,N])
 
         self.M = sparse.bmat([[M00, M01],
                               [M10, M11]])
@@ -66,7 +66,7 @@ class SoundWave:
         L10 = gammap0*d.matrix
         L11 = Z
         if type(gammap0) is list:
-            L10 = sparse.diags([gammap0],0,shape=(N,N))*d.matrix
+            L10 = sparse.diags(gammap0, offsets = 0,shape=[N,N])*d.matrix
         self.L = sparse.bmat([[L00, L01],
                               [L10, L11]])
 
