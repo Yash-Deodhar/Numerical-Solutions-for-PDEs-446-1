@@ -52,6 +52,16 @@ class ExplicitTimestepper(Timestepper):
         super().__init__()
         self.X = eq_set.X
         self.F = eq_set.F
+        if hasattr(eq_set, 'BC'):
+            self.BC = eq_set.BC
+        else:
+            self.BC = None
+
+    def step(self, dt):
+        super().step(dt)
+        if self.BC:
+            self.BC(self.X)
+            self.X.scatter()
 
 
 class ForwardEuler(ExplicitTimestepper):
@@ -64,7 +74,7 @@ class LaxFriedrichs(ExplicitTimestepper):
 
     def __init__(self, eq_set):
         super().__init__(eq_set)
-        N = len(self.X.data)
+        N = len(X.data)
         A = sparse.diags([1/2, 1/2], offsets=[-1, 1], shape=[N, N])
         A = A.tocsr()
         A[0, -1] = 1/2
@@ -128,6 +138,8 @@ class Multistage(ExplicitTimestepper):
             # this loop is slow -- should make K_list a 2D array
             for j in range(i):
                 X_list[i].data += self.a[i, j]*dt*K_list[j]
+            if self.BC:
+                self.BC(X_list[i])
 
         K_list[-1] = self.F(X_list[-1])
 
@@ -153,7 +165,7 @@ class AdamsBashforth(ExplicitTimestepper):
         self.dt = dt
         self.f_list = deque()
         for i in range(self.steps):
-            self.f_list.append(np.copy(self.X.data))
+            self.f_list.append(np.copy(X.data))
 
     def _step(self, dt):
         f_list = self.f_list
@@ -166,6 +178,7 @@ class AdamsBashforth(ExplicitTimestepper):
 
         for i, coeff in enumerate(coeffs):
             self.X.data += self.dt*coeff*self.f_list[i].data
+
         return self.X.data
 
     def _coeffs(self, num):
@@ -240,7 +253,6 @@ class IMEXTimestepper:
         self.dt = None
 
     def evolve(self, dt, time):
-        self.time = time
         while self.t < time - 1e-8:
             self.step(dt)
 
@@ -292,53 +304,8 @@ class BDFExtrapolate(IMEXTimestepper):
     def __init__(self, eq_set, steps):
         super().__init__(eq_set)
         self.steps = steps
-        self.k = [self.X]
-        self.past_dt = np.zeros(1,dtype=float)
+        pass
 
     def _step(self, dt):
-        self.dt = dt
-        if len(self.k) < self.steps:
-            steps = len(self.k)
-        if len(self.k) >= self.steps:
-            steps = self.steps
-        self.past_dt = self.past_dt + self.dt
-        self.past_dt = np.insert(self.past_dt, 0, 0)
-        SM = np.zeros((steps+1,steps+1),dtype=float)
-        SM[0][0] = 1
-        bM = np.zeros(steps+1,dtype=float)
-        for i in range(steps+1):
-            for j in range(1,steps+1):
-                SM[i][j] = pow(-1*self.past_dt[j],i)/factorial(i)       
-        bM[1] = 1
-        self.LU = spla.splu(SM, permc_spec='NATURAL')
-        aM = self.LU.solve(bM)
-        SF = np.zeros((steps,steps),dtype=float)
-        bF = np.zeros(steps,dtype=float)
-        for i in range(steps):
-            for j in range(steps):
-                SF[i][j] = pow(-1*self.past_dt[j+1],i)/factorial(i)
-        bF[0] = 1
-        self.LU = spla.splu(SF, permc_spec='NATURAL')
-        aF = self.LU.solve(bF)
-        LHS = self.M*aM[0] + self.L
-        x1 = 0
-        x2 = 0
-        for i in range(len(aF)):
-            x1 = x1 + aF[i]*self.F(self.k[i])
-        for i in range(1,len(aM)):
-            x2 = x2 + aM[i]*self.k[i-1].data
-        RHS = x1 - self.M @ x2
-        self.LU = spla.splu(LHS.tocsc(), permc_spec='NATURAL')
-        X = self.LU.solve(RHS)
-        self.k.insert(0, StateVector([X]))
-        if steps == self.steps:
-            self.k = self.k[:-1]
-            self.past_dt = self.past_dt[:-1]
-        if self.t + self.dt > self.time - 1e-8:
-            if self.steps == 2 and 2.5/self.dt == 400:
-                self.k[0].data = np.loadtxt('solutions/u_burgers_%i.dat' %400)
-        return self.k[0].data
-
-
-        
+        pass
 
