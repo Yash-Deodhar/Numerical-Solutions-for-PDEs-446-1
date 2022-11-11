@@ -41,6 +41,17 @@ class NonUniformPeriodicGrid:
         return dx
 
 
+class UniformNonPeriodicGrid:
+
+    def __init__(self, N, interval):
+        """ Non-uniform grid; no grid points at the endpoints of the interval"""
+        self.start = interval[0]
+        self.end = interval[1]
+        self.dx = (self.end - self.start)/(N-1)
+        self.N = N
+        self.values = np.linspace(self.start, self.end, N, endpoint=True)
+
+
 class Domain:
 
     def __init__(self, grids):
@@ -99,7 +110,7 @@ class DifferenceUniformGrid(Difference):
             # cancellation if derivative order is even
             dof = dof - (1 - dof % 2)
             j = np.arange(dof) - dof//2
-
+        
         self.dof = dof
         self.j = j
 
@@ -123,12 +134,32 @@ class DifferenceUniformGrid(Difference):
         jmin = -np.min(self.j)
         if jmin > 0:
             for i in range(jmin):
-                matrix[i,-jmin+i:] = self.stencil[:jmin-i]
+                if isinstance(grid, UniformNonPeriodicGrid):
+                    k = np.arange(self.dof)[:, None]
+                    l = np.arange(self.dof)[None,:] - i
+                    S = 1/factorial(k)*(l*self.dx)**k
+                    b = np.zeros( self.dof )
+                    b[self.derivative_order] = 1.
+                    self.stencil = np.linalg.solve(S, b)
+                    matrix[i,:self.dof] = self.stencil[:]
+                    pass
+                else:
+                    matrix[i,-jmin+i:] = self.stencil[:jmin-i]
 
         jmax = np.max(self.j)
         if jmax > 0:
             for i in range(jmax):
-                matrix[-jmax+i,:i+1] = self.stencil[-i-1:]
+                if isinstance(grid, UniformNonPeriodicGrid):
+                    k = np.arange(self.dof)[:,None]
+                    l = np.arange(self.dof)[None,:] - 2*jmax + i 
+                    S = 1/factorial(k)*(l*self.dx)**k
+                    b = np.zeros(self.dof)
+                    b[self.derivative_order] = 1
+                    self.stencil = np.linalg.solve(S,b)
+                    matrix[-1-i,grid.N-self.dof:] = self.stencil[:] 
+                    pass
+                else:
+                    matrix[-jmax+i,:i+1] = self.stencil[-i-1:]
         self.matrix = matrix
 
 
