@@ -1,7 +1,79 @@
-from scipy import sparse
-from timesteppers import StateVector, CrankNicolson, RK22
-import finite
 import numpy as np
+from scipy import sparse
+import timesteppers
+import finite
+from timesteppers import StateVector, CrankNicolson, RK22
+
+
+class ReactionDiffusionFI:
+    
+    def __init__(self, c, D, spatial_order, grid):
+        self.X = timesteppers.StateVector([c])
+        d2 = finite.DifferenceUniformGrid(2, spatial_order, grid)
+        self.N = len(c)
+        I = sparse.eye(self.N)
+        
+        self.M = I
+        self.L = -D*d2.matrix
+
+        def F(X):
+            return X*(1-X)
+        self.F = F
+        
+        def J(X):
+            c_matrix = sparse.diags(X)
+            return sparse.eye(self.N) - 2*c_matrix
+        
+        self.J = J
+
+class BurgersFI:
+    
+    def __init__(self, X, nu, spatial_order, grid):
+        self.X = timesteppers.StateVector([X])
+        d2 = finite.DifferenceUniformGrid(2, spatial_order, grid)
+        d1 = finite.DifferenceUniformGrid(1, spatial_order, grid)
+
+        self.M = sparse.eye(len(X))
+        self.L = -nu*d2.matrix
+
+        def F(X):
+            return -X * (d1 @ X)
+        self.F = F
+        
+        def J(X):
+            du_mat = sparse.diags(d1@X)
+            u_mat = sparse.diags(X)
+            return -du_mat - (u_mat @ d1.matrix)
+        
+        self.J = J
+
+
+class ReactionTwoSpeciesDiffusion:
+    
+    def __init__(self, X, D, r, spatial_order,grid):
+        self.X = X
+        I = sparse.eye(len(X.variables[0]))
+        Z = sparse.csr_matrix((len(X.variables[0]),len(X.variables[0])))
+        d2 = finite.DifferenceUniformGrid(2, spatial_order, grid)
+        self.M = sparse.bmat([[I,Z],
+                             [Z,I]])
+        L00 = -D*d2.matrix
+        L01 = Z
+        L10 = Z
+        L11 = -D*d2.matrix
+        self.L = sparse.bmat([[L00,L01],
+                             [L10,L11]])
+        def F(X):
+            c1 = X.data[:len(X.variables[0])]
+            c2 = X.data[len(X.variables[0]):]
+            return np.concatenate((c1-(c1*c1)-c1*c2,r*c1*c2-r*c2*c2))
+        self.F = F
+        def J(X):
+            c1 = sparse.diags(X.data[:len(X.variables[0])])
+            c2 = sparse.diags(X.data[len(X.variables[0]):])
+            return sparse.bmat([[I-2*c1-c2,-c1],
+                                [r*c2,r*c1-2*r*c2]])
+        self.J =J
 
 class Diffusionx:
     
@@ -339,64 +411,30 @@ class ViscousBurgers2D:
         self.t += dt
 
 class Wave2DBC:
-    def __int__(self, u ,v ,p ,spatial_order ,domain):
-        self.u = u
-        self.v = v
-        self.p = p
-        self.spatial_order = spatial_order
-        self.domain = domain
-        N = u.shape()
-        self.dx = finite.DifferenceUniformGrid(1,self.spatial_order,domain.grids[0])
-        self.dy = finite.DifferenceUniformGrid(1,self.spatial_order,domain.grids[1])
-        self.M = sparse.eye(N,N)
-        self.L = sparse.eye(N,N)*(self.dx.matrix + self.dy.matrix)
-        self.AdvectionX = RK22(Advection_EqnX(u, v, self.dx, self.dy))
-
-    def step(self,dt):
-        self.dt = dt
-        pass
-
-class Wave2DEvolve:
-    
-    def __init__(self, p, U, D):
-        self.X = StateVector([p, U])
-        n = len(p)
-
-        def f(K):
-            # K.scatter()
-            p = K.data[:n, :]
-            U = K.data[-n:, :]
-
-            pout = D @ U
-            Uout = D @ p
-
-            return np.concatenate((pout, Uout))
-            
-        self.F = f
-
-class Wave2DBC:
-
     def __init__(self, u, v, p, spatial_order, domain):
-        self.iter = 0
-        self.t = 0
+        self.X = StateVector([u,v,p])
         dy = finite.DifferenceUniformGrid(1, spatial_order, domain.grids[1], 1)
         dx = finite.DifferenceUniformGrid(1, spatial_order, domain.grids[0], 0)
+        self.N = len(u)
 
-        evolveX_eqn = Wave2DEvolve(p, u, dx)
-        evolveY_eqn = Wave2DEvolve(p, v, dy)
-        self.evolveX = RK22(evolveX_eqn)
-        self.evolveY = RK22(evolveY_eqn)
+        def F(X):
+            u = X.data[:self.N, :]
+            v = X.data[self.N:2*self.N, :]
+            p = X.data[2*self.N:, :]
+            out1 = (dx @ p)
+            out2 = (dy @ p)
+            out3 = (dx@u + dy@v)
 
-    def BC(self, X):
-        n = len(X.variables[0])
-        u = X.data[-n:, :]
-        u[:, -1] = 0
-        u[:, 0] = 0
+            return np.concatenate([out1, out2, out3])
+        self.F = F
 
-    def step(self, dt):
-        self.evolveX.step(dt/2)
-        self.evolveY.step(dt/2)
+        def BC(X):
+            X.data[0, :] = 0
+            X.data[self.N-1, :] = 0
+        self.BC = BC
 
-        self.iter += 1
-        self.t += dt
+
+
+
+
 
