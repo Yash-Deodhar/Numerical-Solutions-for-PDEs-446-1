@@ -285,7 +285,6 @@ class FullyImplicitTimestepper(Timestepper):
         self.X.scatter()
         self.t += dt
         self.iter += 1
-    
 
 
         
@@ -312,17 +311,16 @@ class CrankNicolsonFI(FullyImplicitTimestepper):
 
     def _step(self, dt, guess):
         if dt != self.dt:
-            self.LHS_matrix = self.M + dt*self.L
             self.dt = dt
-        
-        if guess is None:
-            guess = self.X.data
 
-        LHS = lambda X: self.LHS_matrix @ X - dt * self.F(X)
-        RHS = self.M @ self.X.data
-        residual_dash = lambda X: self.M + dt*self.L - dt*self.J(X)
+        if not (guess is None):
+            self.X.data[:] = guess 
 
-        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
+        LHS = lambda X: self.M @ X + dt/2 * (self.L @ X - self.F(X))
+        RHS = self.M @ self.X.data - dt/2 * (self.L @ self.X.data - self.F(self.X.data))
+        residual_dash = lambda X: self.M + dt/2*(self.L - self.J(X))
+
+        solver = NewtonsMethod(LHS, RHS, residual_dash, self.X.data, self.tol)
 
         return solver.run()
 
