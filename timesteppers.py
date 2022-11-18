@@ -241,6 +241,94 @@ class BackwardDifferentiationFormula(Timestepper):
         pass
 
 
+class NewtonsMethod():
+    def __init__(self, LHS, RHS, residual_dash, guess, tolerance):
+        self.LHS = LHS
+        self.RHS = RHS
+        self.resdiual_dash = residual_dash
+        self.guess = guess
+        self.tol = tolerance
+
+    def run(self):
+        i_loop = 0
+        residual = self.LHS(self.guess) - self.RHS
+        while np.max(np.abs(residual)) > self.tol:
+            r_dash = self.resdiual_dash(self.guess)
+
+            delta_X = spla.spsolve(r_dash, -residual)
+
+            self.guess[:] += delta_X
+
+            residual = self.LHS(self.guess) - self.RHS
+
+            i_loop += 1
+            if i_loop == 20:
+                print('error: reached more than 20 iterations')
+                break
+        return self.guess
+
+
+class FullyImplicitTimestepper(Timestepper):
+
+    def __init__(self, eq_set, tol=1e-7):
+        super().__init__()
+        self.X = eq_set.X
+        self.M = eq_set.M
+        self.L = eq_set.L
+        self.F = eq_set.F
+        self.tol = tol
+        self.J = eq_set.J
+        
+    def step(self, dt, guess=None):
+        self.X.gather()
+        self.X.data = self._step(dt, guess)
+        self.X.scatter()
+        self.t += dt
+        self.iter += 1
+    
+
+
+        
+class BackwardEulerFI(FullyImplicitTimestepper):
+
+    def _step(self, dt, guess):
+        if dt != self.dt:
+            self.LHS_matrix = self.M + dt*self.L
+            self.dt = dt
+        
+        if guess is None:
+            guess = self.X.data
+
+        LHS = lambda X: self.LHS_matrix @ X - dt * self.F(X)
+        RHS = self.M @ self.X.data
+        residual_dash = lambda X: self.M + dt*self.L - dt*self.J(X)
+
+        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
+
+        return solver.run()
+
+
+class CrankNicolsonFI(FullyImplicitTimestepper):
+
+    def _step(self, dt, guess):
+        if dt != self.dt:
+            self.LHS_matrix = self.M + dt*self.L
+            self.dt = dt
+        
+        if guess is None:
+            guess = self.X.data
+
+        LHS = lambda X: self.LHS_matrix @ X - dt * self.F(X)
+        RHS = self.M @ self.X.data
+        residual_dash = lambda X: self.M + dt*self.L - dt*self.J(X)
+
+        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
+
+        return solver.run()
+
+        
+
+
 class IMEXTimestepper:
 
     def __init__(self, eq_set):
@@ -257,6 +345,7 @@ class IMEXTimestepper:
             self.step(dt)
 
     def step(self, dt):
+        self.X.gather()
         self.X.data = self._step(dt)
         self.X.scatter()
         self.t += dt
