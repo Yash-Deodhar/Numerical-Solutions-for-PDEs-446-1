@@ -241,92 +241,6 @@ class BackwardDifferentiationFormula(Timestepper):
         pass
 
 
-class NewtonsMethod():
-    def __init__(self, LHS, RHS, residual_dash, guess, tolerance):
-        self.LHS = LHS
-        self.RHS = RHS
-        self.resdiual_dash = residual_dash
-        self.guess = guess
-        self.tol = tolerance
-
-    def run(self):
-        i_loop = 0
-        residual = self.LHS(self.guess) - self.RHS
-        while np.max(np.abs(residual)) > self.tol:
-            r_dash = self.resdiual_dash(self.guess)
-
-            delta_X = spla.spsolve(r_dash, -residual)
-
-            self.guess[:] += delta_X
-
-            residual = self.LHS(self.guess) - self.RHS
-
-            i_loop += 1
-            if i_loop == 20:
-                print('error: reached more than 20 iterations')
-                break
-        return self.guess
-
-
-class FullyImplicitTimestepper(Timestepper):
-
-    def __init__(self, eq_set, tol=1e-7):
-        super().__init__()
-        self.X = eq_set.X
-        self.M = eq_set.M
-        self.L = eq_set.L
-        self.F = eq_set.F
-        self.tol = tol
-        self.J = eq_set.J
-        
-    def step(self, dt, guess=None):
-        self.X.gather()
-        self.X.data = self._step(dt, guess)
-        self.X.scatter()
-        self.t += dt
-        self.iter += 1
-
-
-        
-class BackwardEulerFI(FullyImplicitTimestepper):
-
-    def _step(self, dt, guess):
-        if dt != self.dt:
-            self.LHS_matrix = self.M + dt*self.L
-            self.dt = dt
-        
-        if guess is None:
-            guess = self.X.data
-
-        LHS = lambda X: self.LHS_matrix @ X - dt * self.F(X)
-        RHS = self.M @ self.X.data
-        residual_dash = lambda X: self.M + dt*self.L - dt*self.J(X)
-
-        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
-
-        return solver.run()
-
-
-class CrankNicolsonFI(FullyImplicitTimestepper):
-
-    def _step(self, dt, guess):
-        if dt != self.dt:
-            self.dt = dt
-
-        if not (guess is None):
-            self.X.data[:] = guess 
-
-        LHS = lambda X: self.M @ X + dt/2 * (self.L @ X - self.F(X))
-        RHS = self.M @ self.X.data - dt/2 * (self.L @ self.X.data - self.F(self.X.data))
-        residual_dash = lambda X: self.M + dt/2*(self.L - self.J(X))
-
-        solver = NewtonsMethod(LHS, RHS, residual_dash, self.X.data, self.tol)
-
-        return solver.run()
-
-        
-
-
 class IMEXTimestepper:
 
     def __init__(self, eq_set):
@@ -343,7 +257,6 @@ class IMEXTimestepper:
             self.step(dt)
 
     def step(self, dt):
-        self.X.gather()
         self.X.data = self._step(dt)
         self.X.scatter()
         self.t += dt
@@ -396,3 +309,116 @@ class BDFExtrapolate(IMEXTimestepper):
     def _step(self, dt):
         pass
 
+
+class NewtonsMethod():
+    # You are solving the equation LHS(X) = RHS 
+    # (We are taking the form that the LHS has the X_n+1 terms (which are to be guessed)
+    # and the RHS only has the X_n terms which are a constant for the present time step)
+    
+    # You bring it in the following form: LHS(X) - RHS = residual
+    
+    # Knowing this initial value of the residual based on an initial guess, you try solving for the residual alone:
+    # residual + residual_dash @ delta_X = 0
+    # residual_dash @ delta_X = residual (Matrix solve)
+    
+    # Based on the obtained value for delta_X, you recalculate the LHS(X)
+
+    def __init__(self, LHS, RHS, residual_dash, guess, tolerance):
+        self.LHS = LHS
+        self.RHS = RHS
+        self.resdiual_dash = residual_dash
+        self.guess = guess
+        self.tol = tolerance
+
+    def run(self):
+        i_loop = 0
+        residual = self.LHS(self.guess) - self.RHS
+        while np.max(np.abs(residual)) > self.tol:
+            r_dash = self.resdiual_dash(self.guess)
+
+            delta_X = spla.spsolve(r_dash, -residual)
+
+            self.guess[:] += delta_X
+
+            residual = self.LHS(self.guess) - self.RHS
+
+            i_loop += 1
+            if i_loop == 40:
+                print('error: reached more than 40 iterations')
+                break
+        return self.guess
+
+
+
+class FullyImplicitTimestepper(Timestepper):
+
+    def __init__(self, eq_set, tol=1e-7):
+        super().__init__()
+        if type(eq_set).__name__ == 'ReactionTwoSpeciesDiffusion':
+            self._step = self.BackwardEulerFI_step
+        self.X = eq_set.X
+        self.M = eq_set.M
+        self.L = eq_set.L
+        self.F = eq_set.F
+        self.tol = tol
+        self.J = eq_set.J
+        
+    def step(self, dt, guess=None):
+        self.X.gather()
+        self.X.data = self._step(dt, guess)
+        self.X.scatter()
+        self.t += dt
+        self.iter += 1
+
+    def BackwardEulerFI_step(self, dt, guess = None):
+        if dt != self.dt:
+            self.dt = dt
+        
+        if guess is None:
+            guess = self.X.data
+
+        LHS = lambda X: self.M @ X + dt*(self.L @ X - self.F(X))
+        RHS = self.M @ self.X.data
+        residual_dash = lambda X: self.M + dt*(self.L - self.J(X))
+
+        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
+
+        return solver.run()
+
+
+class BackwardEulerFI(FullyImplicitTimestepper):
+
+    def _step(self, dt, guess):
+        if dt != self.dt:
+            self.dt = dt
+        
+        if guess is None:
+            guess = self.X.data
+
+        LHS = lambda X: self.M @ X + dt*(self.L @ X - self.F(X))
+        RHS = self.M @ self.X.data
+        residual_dash = lambda X: self.M + dt*(self.L - self.J(X))
+
+        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
+
+        return solver.run()
+
+class CrankNicolsonFI(FullyImplicitTimestepper):
+
+
+
+    def _step(self, dt, guess = None):
+        if dt != self.dt:
+            self.dt = dt
+
+        if guess is None:
+            guess = self.X.data
+
+        LHS = lambda X: (self.M @ X) + (dt/2) * ((self.L @ X) - self.F(X))
+        RHS = (self.M @ self.X.data) - (dt/2) * ((self.L @ self.X.data) - self.F(self.X.data))
+        residual_dash = lambda X: self.M + (dt/2)*(self.L - self.J(X)) # Most probably correct
+        # residual_dash = lambda X: self.M + dt/2*(self.L - self.J(X))
+
+        solver = NewtonsMethod(LHS, RHS, residual_dash, guess, self.tol)
+
+        return solver.run()
