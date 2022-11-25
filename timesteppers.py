@@ -354,8 +354,6 @@ class FullyImplicitTimestepper(Timestepper):
 
     def __init__(self, eq_set, tol=1e-7):
         super().__init__()
-        if type(eq_set).__name__ == 'ReactionTwoSpeciesDiffusion':
-            self._step = self.BackwardEulerFI_step
         self.X = eq_set.X
         self.M = eq_set.M
         self.L = eq_set.L
