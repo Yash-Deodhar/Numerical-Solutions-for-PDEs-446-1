@@ -1,3 +1,4 @@
+
 import numpy as np
 from scipy import sparse
 import timesteppers
@@ -50,30 +51,53 @@ class BurgersFI:
 
 class ReactionTwoSpeciesDiffusion:
     
-    def __init__(self, X, D, r, spatial_order,grid):
+    def __init__(self, X, D, r, spatial_order, grid): # Grid was not provided
         self.X = X
-        I = sparse.eye(len(X.variables[0]))
-        Z = sparse.csr_matrix((len(X.variables[0]),len(X.variables[0])))
         d2 = finite.DifferenceUniformGrid(2, spatial_order, grid)
-        self.M = sparse.bmat([[I,Z],
-                             [Z,I]])
+        self.N = len(X.variables[0])
+        I = sparse.eye(self.N)
+        Z = sparse.csr_matrix((self.N, self.N))
+        
+        M00 = I
+        M01 = Z
+        M10 = Z
+        M11 = I
+        self.M = sparse.bmat([[M00,M01],
+                              [M10,M11]])
+
         L00 = -D*d2.matrix
         L01 = Z
         L10 = Z
         L11 = -D*d2.matrix
         self.L = sparse.bmat([[L00,L01],
-                             [L10,L11]])
+                              [L10,L11]])
+
         def F(X):
-            c1 = X.data[:len(X.variables[0])]
-            c2 = X.data[len(X.variables[0]):]
-            return np.concatenate((c1-(c1*c1)-c1*c2,r*c1*c2-r*c2*c2))
+            c1 = X[:self.N]
+            c2 = X[-self.N:]
+            f_c1 = c1-c1*c1-c1*c2
+            f_c2 = r*c2*c1-r*c2*c2
+
+            return np.concatenate((f_c1, 
+                                   f_c2))
+
         self.F = F
+        
         def J(X):
-            c1 = sparse.diags(X.data[:len(X.variables[0])])
-            c2 = sparse.diags(X.data[len(X.variables[0]):])
-            return sparse.bmat([[I-2*c1-c2,-c1],
-                                [r*c2,r*c1-2*r*c2]])
-        self.J =J
+            c1 = X[:self.N]
+            c2 = X[-self.N:]
+
+            # Based more on intuition than logic why this is done
+            J00 = sparse.diags(1-2*c1-c2)
+            J01 = sparse.diags(-c1)
+            J10 = sparse.diags(r*c2)
+            J11 = sparse.diags(r*c1-2*r*c2)
+            J_individual = sparse.bmat([[J00,J01],
+                                        [J10,J11]])
+
+            return J_individual
+
+        self.J = J
 
 class Diffusionx:
     
